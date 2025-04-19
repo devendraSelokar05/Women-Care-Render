@@ -10,10 +10,12 @@ const SuperAdminSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
+    match: [/^\S+@\S+\.\S+$/, "Invalid email format"],
   },
   password: {
     type: String,
     required: true,
+    minlength: [8, "Password must be at least 8 characters long"],
   },
   contactNumber: {
     type: String,

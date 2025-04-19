@@ -2,8 +2,8 @@ const Cart = require("../../models/UserModels/CartModel");
 const Product = require("../../models/SuperAdminModels/Product");
 const Order = require("../../models/UserModels/orderNow");
 const branchModel = require("../../models/SuperAdminModels/branch");
-
-
+const branchAdminNotificationModel = require('../../models/BranchAdminModels/branchAdminNotification'); 
+const BranchAdmin = require("../../models/BranchAdminModels/branchAdmin");
 //✅ Add Item  To Cart
 const addToCart = async (req, res) => {
   try {
@@ -225,103 +225,85 @@ const removeFromCart = async (req, res) => {
 const BuyOrderFromCart = async (req, res) => {
   try {
     const userId = req.user.id;
-
     const cart = await Cart.findOne({ userId }).populate("items.productId");
+ 
     if (!cart || cart.items.length === 0) {
-      return res
-        .status(400)
-        .json({ message: "Cart is empty. Add products first." });
+      return res.status(400).json({ message: "Cart is empty. Add products first." });
     }
-
-    const { emergencyDelivery, deliveryAddress, paymentMethod, branchName } =
-      req.body;
+ 
+    const { emergencyDelivery, deliveryAddress, paymentMethod } = req.body;
     const emergency = emergencyDelivery === "true";
-
+ 
     let totalAmount = 0;
     let orderItems = [];
     let insufficientStockProducts = [];
-
+ 
     const firstProduct = cart.items[0]?.productId;
     const productImage = firstProduct?.image?.[0] || "";
-
+ 
     for (const item of cart.items) {
       const product = item.productId;
       if (!product) {
-        return res
-          .status(400)
-          .json({ message: "One of the products in your cart is missing." });
+        return res.status(400).json({ message: "One of the products in your cart is missing." });
       }
-
+ 
       if (product.stock < item.quantity) {
-        insufficientStockProducts.push(
-          product.productName || product.name || "Unnamed Product"
-        );
+        insufficientStockProducts.push(product.productName || product.name || "Unnamed Product");
         continue;
       }
-
+ 
       totalAmount += item.quantity * item.price;
       orderItems.push({
         product: product._id,
         quantity: item.quantity,
         price: item.price,
       });
-
+ 
       product.stock -= item.quantity;
       await product.save();
     }
-
+ 
     if (insufficientStockProducts.length > 0) {
       return res.status(400).json({
-        message: `Not enough stock for: ${insufficientStockProducts.join(
-          ", "
-        )}`,
+        message: `Not enough stock for: ${insufficientStockProducts.join(", ")}`,
       });
     }
-
-    //Add Emergency Delivery Charges
+ 
     if (emergency) totalAmount += 20;
-
-    let branchInfo = null;
-
-    if (branchName) {
-      const branch = await branchModel.findOne({ branchName });
-      if (!branch) {
-        return res.status(404).json({
-          message: `Branch with name "${branchName}" not found.`,
-        });
-      }
-      branchInfo = branch._id;
-    } else {
-      const allBranches = await branchModel.find();
-      const matchedBranch = allBranches.find((branch) => {
-        const pins = Array.isArray(branch.servicePinCode)
-          ? branch.servicePinCode.map((code) => code.toString())
-          : [branch.servicePinCode?.toString()];
-
-        return (
-          pins.some((pin) => deliveryAddress.includes(pin)) ||
-          deliveryAddress
-            .toLowerCase()
-            .includes(branch.fullAddress?.toLowerCase())
-        );
-      });
-
-      if (matchedBranch) {
-        branchInfo = matchedBranch._id;
-      }
+ 
+    const userAddress = req.user.address;
+    const pinCodeMatch = userAddress.match(/\b\d{6}\b/);
+    const userPinCode = pinCodeMatch ? pinCodeMatch[0] : null;
+ 
+    if (!userPinCode) {
+      return res.status(400).json({ message: "No valid 6-digit PIN code found in your address." });
     }
-
-    //Generate Unique Order ID
+ 
+    // Step 1: Find Branch
+    const matchedBranch = await branchModel.findOne({ servicePinCode: userPinCode });
+ 
+    if (!matchedBranch) {
+      return res.status(404).json({ message: "No branch found matching your address's PIN code." });
+    }
+ 
+    // Step 2: Find BranchAdmin assigned to that branch
+    const branchAdmin = await BranchAdmin.findOne({ branch: matchedBranch._id });
+ 
+    if (!branchAdmin) {
+      return res.status(404).json({ message: "No branch admin found for this branch." });
+    }
+ 
+    const branchInfo = matchedBranch._id;
+    const branchAdminId = branchAdmin._id;
+ 
+    // Step 3: Generate unique Order ID
     const generateUniqueOrderId = async () => {
       const prefix = "9B76HD545E";
       let nextNumber = 1;
-
-      const latestOrder = await Order.findOne({
-        orderId: { $regex: `^${prefix}` },
-      })
+      const latestOrder = await Order.findOne({ orderId: { $regex: `^${prefix}` } })
         .sort({ createdAt: -1 })
         .lean();
-
+ 
       if (latestOrder) {
         const lastId = latestOrder.orderId.replace(prefix, "");
         const parsed = parseInt(lastId);
@@ -329,8 +311,7 @@ const BuyOrderFromCart = async (req, res) => {
           nextNumber = parsed + 1;
         }
       }
-
-      //Generate new order ID
+ 
       let newOrderId;
       let exists = true;
       while (exists) {
@@ -342,13 +323,13 @@ const BuyOrderFromCart = async (req, res) => {
           nextNumber++;
         }
       }
-
+ 
       return newOrderId;
     };
-
+ 
     const orderId = await generateUniqueOrderId();
-
-    //Create new order
+ 
+    // Step 4: Create new Order
     const newOrder = new Order({
       user: userId,
       orderId,
@@ -359,15 +340,36 @@ const BuyOrderFromCart = async (req, res) => {
       emergencyDelivery: emergency,
       branchInfo,
     });
-
+ 
     await newOrder.save();
+ 
+    const populatedOrder = await Order.findById(newOrder._id).populate("user", "fullName image");
 
+
+    // Step 5: Save Notification for Branch Admin
+    const notification = new branchAdminNotificationModel({
+      branchAdminId: branchAdminId,
+      title: "New Order Placed",
+      message:` Order #${orderId} has been placed for delivery.`,
+      isRead: false,
+      createdAt: new Date(),
+      id: populatedOrder.user._id,
+      fullName: populatedOrder.user.fullName || "Unknown",
+      image: populatedOrder.user.image || "",
+    });
+ 
+    await notification.save();
+ 
+    // Step 6: Clear Cart
     cart.items = [];
     cart.totalAmount = 0;
     await cart.save();
-
+ 
+    // Step 7: Send Response
     return res.status(201).json({
       message: "Order placed successfully",
+      branchId: branchInfo,
+      branchAdminId: branchAdminId,
       order: {
         user: newOrder.user,
         orderId: newOrder.orderId,
@@ -396,6 +398,8 @@ const BuyOrderFromCart = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+ 
+ 
 
 //✅ Save for later
 const saveForLater = async (req, res) => {

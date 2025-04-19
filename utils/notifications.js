@@ -61,7 +61,7 @@ const fetchNotifications = async (
     try {
         let notifications = await model
             .find({ [userIdField]: userId, isRead })
-            .select("title message image createdAt")
+            .select("title message fullName  image createdAt")
             .sort({ createdAt: -1 })
             .exec();
  

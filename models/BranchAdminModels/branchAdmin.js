@@ -13,11 +13,14 @@ const branchAdminSchema = new mongoose.Schema(
       required: true,
       unique: true,
       trim: true,
+      match: [/^\S+@\S+\.\S+$/, "Invalid email format"],
     },
     password: {
       type: String,
       required: true,
       trim: true,
+      minlength: [8, "Password must be at least 8 characters long"],
+      
     },
     contactNumber: {
       type: String,
