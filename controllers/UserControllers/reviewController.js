@@ -60,20 +60,35 @@ const addReview = async (req, res) => {
 //✅ Get All Reviews
 const getAllReviews = async (req, res) => {
     try {
-        const reviews = await reviewModel
-            .find()
-            .select("name ratings review files createdAt productId -_id");
 
-        const formattedReviews = reviews.map((review) => {
-            const { createdAt, ...rest } = review._doc;
-            return {
+        let { page = 1, limit = 10 } = req.query;
+        page = parseInt(page);
+        limit = parseInt(limit);
+        const skip = (page - 1) * limit;
+
+        const [reviews, total] = await Promise.all([
+            reviewModel
+                .find()
+                .select("name ratings review files createdAt productId -_id")
+                .skip(skip)
+                .limit(limit),
+            reviewModel.countDocuments(),
+        ]);
+        const formattedReviews = reviews.map(
+            ({ _doc: { createdAt, ...rest } }) => ({
                 ...rest,
                 timeAgo: dayjs(createdAt).fromNow(),
-            };
-        });
+            })
+        );
+        const totalPages = Math.ceil(total / limit);
 
         return res.status(200).json({
             success: true,
+            currentPage: page,
+            totalPages,
+            totalReviews: total,
+            previous: page > 1,
+            next: page < totalPages,
             reviews: formattedReviews,
         });
     } catch (error) {

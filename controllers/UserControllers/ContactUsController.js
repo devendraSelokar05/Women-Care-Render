@@ -1,27 +1,34 @@
- 
 const ContactUs = require("../../models/UserModels/Contact-Us");
  
-//✅ Submit Contact Us
-const submitContactUs = async (req, res) => {
+//✅ Create Contact Us
+const createContactUs = async (req, res) => {
   try {
-    const { email, phoneNumber, suggestions } = req.body;
-    console.log(req.body);
+    const { title, phoneNumber } = req.body;
  
-    if (!email || !phoneNumber || !suggestions) {
-      return res.status(400).json({ message: "All fields are required" });
+    if (!title || !phoneNumber) {
+      return res.status(400).json({ message: "Both title and phone number are required" });
     }
  
-    const contactUs = new ContactUs({ email, phoneNumber, suggestions });
+    const contactUs = new ContactUs({ title, phoneNumber });
     await contactUs.save();
  
-    res.status(200).json({ message: "Contact Us form submitted successfully" });
+    res.status(200).json({ message: "Contact Us form submitted successfully", contactUs });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Internal server error", error: error.message });
+    res.status(500).json({ message: "Internal server error", error: error.message });
+  }
+};
+ 
+//✅ Get Contact Us
+const getContactUs = async (req, res) => {
+  try {
+    const contactUsList = await ContactUs.findOne();
+    res.status(200).json(contactUsList);
+  } catch (error) {
+    res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
  
 module.exports = {
-  submitContactUs
+  createContactUs,
+  getContactUs,
 };

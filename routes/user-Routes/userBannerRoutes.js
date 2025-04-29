@@ -3,6 +3,7 @@ const { getSingleBanner } = require("../../controllers/UserControllers/userBanne
 
 const router = express.Router();
 
+//✅ User Banner Routes
 router.get("/getBanner", getSingleBanner);
 
 module.exports = router;

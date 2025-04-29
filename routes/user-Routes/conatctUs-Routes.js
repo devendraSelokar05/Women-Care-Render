@@ -1,10 +1,10 @@
 const express = require("express");
 const router = express.Router();
-const { submitContactUs } = require("../../controllers/UserControllers/ContactUsController");
+const { createContactUs, getContactUs } = require("../../controllers/UserControllers/ContactUsController");
  
  
  //✅ User Contact Us Routes
-router.post("/contact-us", submitContactUs);
- 
+router.post("/createContactUs", createContactUs);
+router.get("/getContactUs", getContactUs);
  
 module.exports = router;
