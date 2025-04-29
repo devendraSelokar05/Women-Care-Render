@@ -116,11 +116,48 @@ const updateAllNotificationsStatus = async (
     }
 };
  
+//Helper Function for send stock Notification to superAdmin
+const sendStockNotificationToSuperAdmin = async (req, res) => {
+    try {
+        const { productId, productName, currentStock } = req.body;
+        
+        // Input validation
+        if (!productId || !productName) {
+            return res.status(400).json({
+                success: false,
+                message: "productId and productName are required.",
+            });
+        }
+        
+        // Create notification for superAdmin
+        const notification = new superAdminNotificationModel({
+            title: "Stock Alert",
+            message: `The stock for ${productName} has been depleted or is running low.`,
+            productId: productId,
+            stockInfo: {
+                productName,
+                currentStock: currentStock || 0,
+                timestamp: new Date()
+            }
+        });
+        
+        await notification.save();
+        
+        return res.status(200).json({
+            success: true,
+            message: "Stock notification sent to SuperAdmin successfully!",
+        });
+    } catch (error) {
+        console.error("Error sending stock notification:", error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
 module.exports = {
     getUnreadNotificationCount,
     formatNotificationTime,
     fetchNotifications,
     updateNotificationStatus,
     updateAllNotificationsStatus,
+    sendStockNotificationToSuperAdmin,
 };
  
