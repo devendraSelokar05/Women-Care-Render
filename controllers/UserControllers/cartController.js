@@ -117,12 +117,12 @@ const getCartItemCount = async (req, res) => {
       });
     }
 
-    const totalCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+    const distinctItemCount = cart.items.length;
 
     return res.status(200).json({
       success: true,
-      count: totalCount,
-      message: "Cart item count fetched successfully"
+      count: distinctItemCount,
+      message: "Distinct cart item count fetched successfully"
     });
   } catch (error) {
     console.error("Cart count error:", error);
