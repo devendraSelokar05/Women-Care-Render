@@ -1,4 +1,6 @@
 const ProductModel = require("../../models/SuperAdminModels/Product");
+const reviewModel = require("../../models/UserModels/Review");
+const mongoose = require("mongoose");
 
 //✅ Get All Products
 const getAllProducts = async (req, res) => {
@@ -53,40 +55,49 @@ const getAllProducts = async (req, res) => {
     });
   }
 };
-  
+
 
 //✅ Get Product by ID
 const getProductById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const product = await ProductModel.findById(
-      id,
-      "_id image productName quantityInEachPack price availableProductQuantity productDescription size"
-    );
+    // Fetch product and average rating in parallel
+    const [product, ratingData] = await Promise.all([
+      ProductModel.findById(id, "_id image productName quantityInEachPack price availableProductQuantity productDescription size"),
+      reviewModel.aggregate([
+        { $match: { productId: new mongoose.Types.ObjectId(id) } },
+        {
+          $group: {
+            _id: null,
+            averageRating: { $avg: "$ratings" },
+            totalReviews: { $sum: 1 },
+          },
+        },
+      ])
+    ]);
 
     if (!product) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Product not found" });
+      return res.status(404).json({ success: false, message: "Product not found" });
     }
 
-    // Extract first image and remaining images as relatedImages
+    const firstImage = product.image?.[0] || null;
+    const relatedImages = product.image?.slice(1) || [];
+    const { averageRating = null, totalReviews = 0 } = ratingData[0] || {};
+
     const formattedProduct = {
       _id: product._id,
-      image: product.image.length > 0 ? product.image[0] : null, // First image
+      image: firstImage,
+      relatedImages,
       productName: product.productName,
       quantityInEachPack: product.quantityInEachPack,
       size: product.size,
       price: product.price,
-      aboutThisItem: product.productDescription, // Renaming productDescription to aboutThisItem
-      relatedImages: product.image.length > 1 ? product.image.slice(1) : [], // Remaining images as relatedImages
+      aboutThisItem: product.productDescription,
+      averageRating: averageRating ? parseFloat(averageRating.toFixed(1)) : 0,
+      totalReviews,
+      ...(product.availableProductQuantity <= 20 && { leftStock: product.availableProductQuantity })
     };
-
-    // Show leftStock only if 20 or less
-    if (product.availableProductQuantity <= 20) {
-      formattedProduct.leftStock = product.availableProductQuantity;
-    }
 
     res.status(200).json({ success: true, product: formattedProduct });
   } catch (error) {
